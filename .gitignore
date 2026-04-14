@@ -1,0 +1,20 @@
+# Datos descargados (pesados, regenerables)
+00_Prev
+data/raw/
+data/processed/
+
+# Python
+__pycache__/
+*.pyc
+.env
+.venv/
+*.egg-info/
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
+# Streamlit secrets
+.streamlit/secrets.toml
+
+# Libro de Google sheet
+data/Datos_API_XM.gsheet
