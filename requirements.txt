@@ -1,0 +1,4 @@
+pydataxm>=0.3.0
+pandas>=2.0
+matplotlib>=3.7
+seaborn>=0.12
