@@ -16,14 +16,15 @@
 - [La API de XM y pydataxm](#-la-api-de-xm-y-pydataxm)
 - [Arquitectura del Pipeline ETL](#-arquitectura-del-pipeline-etl)
 - [Estructura del Repositorio](#-estructura-del-repositorio)
-- [Instalación y Configuración](#-instalación-y-configuración)
-- [Uso](#-uso)
-- [Análisis Exploratorio (EDA) — Hallazgos Clave](#-análisis-exploratorio-eda--hallazgos-clave)
+- [Instalación y Uso](#-instalación-y-uso)
+			  
+- [Análisis Exploratorio — Hallazgos Clave](#-análisis-exploratorio--hallazgos-clave)
 - [Catálogo de Métricas XM](#-catálogo-de-métricas-xm)
 - [Roadmap del Proyecto](#-roadmap-del-proyecto)
 - [Stack Tecnológico](#-stack-tecnológico)
 - [Autor](#-autor)
 - [Licencia](#-licencia)
+
 
 ---
 
@@ -34,8 +35,8 @@ Este proyecto construye un **pipeline ETL (Extract–Transform–Load) reproduci
 ### Preguntas que responde
 
 1. **¿Cómo se distribuye la generación por tecnología?** — Participación porcentual de Solar, Hidráulica, Térmica, Eólica y Cogeneración en la generación total del SIN.
-2. **¿Cuál es el perfil horario típico de generación solar en Colombia?** — Curva de campana (bell curve) H1–H24, complementariedad con la generación hidráulica.
-3. **¿Qué tan concentrado está el mercado por agente generador?** — Análisis de los Top 15 agentes, participación por tecnología, indicadores de concentración.
+2. **¿Cuál es el perfil horario típico de generación solar en Colombia?** — Curva de campana H01–H24 y complementariedad con la generación hidráulica.
+3. **¿Qué tan concentrado está el mercado por agente generador?** — Top 15 agentes, participación por tecnología.
 4. **¿Cuál es la composición real del parque solar?** — Desglose por tipo de recurso: Autogeneración de Pequeña Escala, Generación Distribuida, Autogeneradores y plantas despachadas centralmente.
 
 ### ¿Por qué es relevante?
@@ -123,84 +124,63 @@ El notebook soporta **3 modos** para flexibilidad total:
 Esto permite que cualquier persona reproduzca el análisis sin acceso a internet, usando los CSVs incluidos en el repositorio.
 
 ---
-
 ## 🔧 Arquitectura del Pipeline ETL
 
 ```
-                        ┌──────────────────────┐
-                        │   API XM (pydataxm)  │
-                        │  Métrica: Gene        │
-                        │  Nivel: Recurso       │
-                        └──────────┬───────────┘
-                                   │  Extract
-                                   ▼
-                        ┌──────────────────────┐
-                        │  datos_crudos (wide)  │
-                        │  24 cols por hora     │
-                        │  Values_Hour01...24   │
-                        └──────────┬───────────┘
-                                   │  Transform: melt()
-                                   ▼
-                        ┌──────────────────────┐
-                        │  fact_generacion      │
-                        │  (long format)        │
-                        │  Fecha|Hora|Codigo|   │
-                        │  Generacion_kWh       │
-                        └──────────┬───────────┘
-                                   │  JOIN
-                    ┌──────────────┼──────────────┐
-                    ▼              ▼               ▼
-            ┌─────────────┐ ┌──────────┐ ┌──────────────┐
-            │ dim_plantas  │ │dim_agentes│ │  dim_rios    │
-            │ Tecnologia   │ │ Nombre   │ │  Cuenca      │
-            │ Fuente       │ │ Tipo     │ │  Aportantes  │
-            │ RecType      │ │ Código   │ │              │
-            └─────────────┘ └──────────┘ └──────────────┘
-                    │
-                    ▼
-            ┌──────────────────────────────┐
-            │    generacion_enriquecida    │
-            │  Tabla analítica final       │
-            │  Fecha|Hora|Planta|Tecno|    │
-            │  Fuente|Agente|Generacion    │
-            └──────────────────────────────┘
+┌────────────────────┐      melt()       ┌───────────────────┐      merge()      ┌─────────────────────────┐
+│  datos_crudos       │  ──────────────►  │  fact_generacion  │  ──────────────►  │  generacion_enriquecida │
+│  (wide: 24 cols/h)  │                   │  (long: 1 fila/h) │                   │  (+ metadatos planta)   │
+└────────────────────┘                    └───────────────────┘                   └─────────────────────────┘
+                                                                       ▲
+                                                              ┌────────┴────────┐
+                                                              │   dim_plantas   │
+                                                              │   dim_agentes   │
+                                                              │   dim_rios      │
+                                                              └─────────────────┘
 ```
 
 ### Modelo Dimensional (Star Schema)
 
 - **Tabla de hechos (`fact_generacion`):** Una fila por planta × hora × día. Columnas: `Fecha`, `Hora`, `Codigo_Planta`, `Generacion_kWh`.
-- **Dimensión plantas (`dim_plantas`):** Código, nombre, tecnología (`HIDRAULICA`, `SOLAR`, `TERMICA`, `EOLICA`, `COGENERADOR`), fuente de energía, tipo de recurso (`NORMAL`, `FILO DE AGUA`, `GEN. DISTRIBUIDA`, `AUTOG PEQ. ESCALA`), tipo de despacho, agente propietario.
-- **Dimensión agentes (`dim_agentes`):** Información de las empresas participantes del MEM.
+- **Dimensión plantas (`dim_plantas`):** Código, nombre, tecnología, fuente de energía, tipo de recurso (RecType), tipo de despacho, agente propietario.
+- **Dimensión agentes (`dim_agentes`):** Empresas participantes del MEM.
 - **Dimensión ríos (`dim_rios`):** Cuencas hidrográficas asociadas a plantas hidráulicas.
+
+### Auto-refresh de Catálogos
+
+El parque generador crece constantemente. Si el ETL detecta plantas en los datos de generación que no existen en el catálogo maestro, automáticamente descarga catálogos frescos desde la API, re-ejecuta el JOIN, y reporta las plantas que aún no tienen match.
 
 ---
 
 ## 📂 Estructura del Repositorio
 
 ```
-xm-energia-colombia/
+solar-generation-colombia/
 │
 ├── notebooks/
-│   └── 01_ETL_exploracion_v1.ipynb     # Pipeline ETL + EDA completo
+│   └── 01_ETL_exploracion_v1.ipynb       # Pipeline ETL + EDA completo
+│
+├── src/
+│   ├── extraccion.py                      # Funciones de descarga desde la API XM
+│   ├── etl.py                             # Pipeline de transformación (wide → long)
+│   └── visualizaciones.py                 # Funciones de gráficos reutilizables
 │
 ├── data/
-│   ├── raw/                             # Datos crudos descargados de la API
-│   │   ├── datos_generacion_test.csv    # Generación real (Gene) - muestra
-│   │   ├── dim_plantas.csv              # Catálogo de recursos generadores
-│   │   ├── dim_agentes.csv              # Catálogo de agentes del mercado
-│   │   └── dim_rios.csv                 # Catálogo de cuencas hidrográficas
-│   │
-│   └── processed/                       # Outputs limpios del ETL
-│       ├── fact_generacion.csv          # Tabla de hechos (long format)
-│       ├── generacion_enriquecida.csv   # Tabla analítica con metadatos
-│       └── dim_plantas_clean.csv        # Dimensión limpia y normalizada
+│   ├── raw/                               # Datos crudos con estampa YYYYMMDD
+│   │   ├── datos_generacion_YYYYMMDD.csv  # Generación real (Gene) por recurso
+│   │   ├── dim_plantas_YYYYMMDD.csv       # Catálogo de recursos generadores
+│   │   ├── dim_agentes_YYYYMMDD.csv       # Catálogo de agentes del mercado
+│   │   └── dim_rios_YYYYMMDD.csv          # Catálogo de cuencas hidrográficas
+│   └── processed/                         # Outputs limpios del ETL
+│       ├── fact_generacion_YYYYMMDD.csv
+│       ├── generacion_enriquecida_YYYYMMDD.csv
+│       └── dim_plantas_clean_YYYYMMDD.csv
 │
-├── docs/
-│   └── Datos_API_XM.xlsx               # Catálogo completo de 190 métricas de XM
+├── app/                                    # Dashboard Streamlit (v4 — futuro)
 │
-├── README.md                            # Este archivo
-├── requirements.txt                     # Dependencias del proyecto
-└── LICENSE                              # MIT License
+├── .gitignore
+├── README.md
+└── requirements.txt
 ```
 
 ---
@@ -287,21 +267,19 @@ Después de ejecutar el notebook, encontrarás en `data/processed/`:
 
 ## 📊 Análisis Exploratorio (EDA) — Hallazgos Clave
 
-### 4.1 Distribución por Tecnología
 
-La generación del SIN está dominada por **hidráulica** (~65%), seguida de **térmica** (~28%). Solar, a pesar de representar ~84% de los recursos registrados, contribuye menos del 3% de la energía total — reflejando que la mayoría son instalaciones de Generación Distribuida y autogeneración de pequeña escala.
+### Distribución por Tecnología
+La generación del SIN está dominada por **hidráulica** (~65%), seguida de **térmica** (~28%). Solar representa la mayoría de los recursos registrados pero contribuye menos del 3% de la energía total, reflejando que la mayoría son instalaciones de Generación Distribuida y autogeneración de pequeña escala.
 
-### 4.2 Perfil Horario Solar vs. Hidráulica
+### Perfil Horario Solar–Hidráulica
+La generación solar muestra una **curva de campana** con pico entre las 10h–14h. La **complementariedad** con la hidráulica es evidente: la solar reduce la demanda sobre el sistema en horas de sol, mientras la hidráulica cubre los picos nocturnos (18h–22h).
 
-La generación solar muestra una **curva de campana** con producción cero en horas nocturnas, rampa de subida desde las 6:00, pico entre las 10:00 y 14:00, y descenso hasta las 18:00. La **complementariedad solar-hidráulica** es evidente: la hidráulica mantiene generación estable las 24 horas, mientras la solar reduce la demanda sobre las plantas hidráulicas en horas de sol.
+### Concentración del Mercado
+El análisis de los Top 15 agentes revela alta concentración: pocos actores (EPM, EMGESA, ISAGEN) concentran la mayoría de la generación hidráulica, mientras la solar está atomizada en cientos de pequeños autogeneradores.
 
-### 4.3 Concentración del Mercado
-
-El análisis de los Top 15 agentes generadores revela alta concentración: pocos actores (EPM, EMGESA, ISAGEN) concentran la mayoría de la generación hidráulica, mientras que la generación solar está atomizada en cientos de pequeños autogeneradores.
-
-### 4.4 Desglose por Tipo de Recurso (RecType)
-
-El campo `RecType` es más granular que `Tecnologia` y revela la estructura real del parque generador:
+### Desglose por RecType (CREG)
+El campo `Tipo_Recurso` revela que la mayoría de los recursos solares son `AUTOG PEQ. ESCALA` y `GEN. DISTRIBUIDA` bajo CREG 174-2021, con un marco regulatorio distinto al despacho central.
+				
 
 | RecType | Descripción | Regulación |
 |:--------|:------------|:-----------|
@@ -364,11 +342,11 @@ Senior Electrical Engineer · Power Systems · Data Science
 
 - 8+ años de experiencia en estudios de sistemas de potencia (DIgSILENT PowerFactory, PSS/E, PSCAD, EMTP).
 - 5 años ejecutando estudios de interconexión NERC/FERC para Duke Energy Florida.
-- Especialización en automatización Python para el sector eléctrico colombiano.
+- Automatización mediante Python para el sector eléctrico colombiano (CREG/CNO).
 - Maestría en Ingeniería Eléctrica — Universidad Nacional de Colombia.
 
-[![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-0A66C2?logo=linkedin)](https://www.linkedin.com/in/tu-perfil/)
-[![GitHub](https://img.shields.io/badge/GitHub-Follow-181717?logo=github)](https://github.com/tu-usuario)
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-0A66C2?logo=linkedin)](www.linkedin.com/in/manuel-fajardo-bba988142)
+[![GitHub](https://img.shields.io/badge/GitHub-Follow-181717?logo=github)](https://github.com/mffajardor/)
 
 ---
 
