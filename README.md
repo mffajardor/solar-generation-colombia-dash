@@ -1,4 +1,4 @@
-# 🇨🇴 Proyecto de Análisis de Generación Eléctrica — Colombia mediante la API de XM
+# 🇨🇴 Análisis de Generación Eléctrica — Colombia (API XM)
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Pandas](https://img.shields.io/badge/Pandas-2.x-150458?logo=pandas)](https://pandas.pydata.org/)
@@ -6,7 +6,6 @@
 [![Status](https://img.shields.io/badge/Status-v1%20ETL%20%2B%20EDA-blue)]()
 
 > Pipeline ETL reproducible + análisis exploratorio del mercado eléctrico colombiano usando la API pública de XM.
-
 
 ---
 
@@ -28,19 +27,16 @@
 
 ---
 
-
 ## 🎯 Descripción del Proyecto
 
-Este proyecto construye un **pipeline ETL (Extract–Transform–Load) reproducible** que extrae datos consolidados del sector de generación eléctrica en tiempo real desde la API pública de XM — el operador del mercado eléctrico de Colombia — realizando su respectiva transformación en un **modelo dimensional limpio** (star schema), y entrega un análisis exploratorio del parque generador del Sistema Interconectado Nacional (SIN).
-
+Este proyecto construye un **pipeline ETL (Extract–Transform–Load) reproducible** que extrae datos de generación eléctrica en tiempo real desde la API pública de XM — el operador del mercado eléctrico de Colombia — los transforma en un **modelo dimensional limpio** (star schema), y entrega un análisis exploratorio del parque generador del Sistema Interconectado Nacional (SIN).
 
 ### Preguntas que responde
 
-1. **¿Cómo es la distribución de la generación del SIN por tecnología?** — Participación porcentual de Solar, Hidráulica, Térmica, Eólica y Cogeneración en la generación total del SIN.
-2. **¿Cuál es el perfil horario típico de generación solar en Colombia?** — Se maneja tipicamente una Curva de campana (bell curve) H1–H24, la cual se complementa con la generación hidráulica.
-3. **¿Qué tan concentrado está el mercado por agente generador?** — Análisis de los agentes más grandes (top 15), participación por tecnología e indicadores de concentración.
+1. **¿Cómo se distribuye la generación por tecnología?** — Participación porcentual de Solar, Hidráulica, Térmica, Eólica y Cogeneración en la generación total del SIN.
+2. **¿Cuál es el perfil horario típico de generación solar en Colombia?** — Curva de campana (bell curve) H1–H24, complementariedad con la generación hidráulica.
+3. **¿Qué tan concentrado está el mercado por agente generador?** — Análisis de los Top 15 agentes, participación por tecnología, indicadores de concentración.
 4. **¿Cuál es la composición real del parque solar?** — Desglose por tipo de recurso: Autogeneración de Pequeña Escala, Generación Distribuida, Autogeneradores y plantas despachadas centralmente.
-
 
 ### ¿Por qué es relevante?
 
@@ -58,7 +54,6 @@ Colombia está en plena transición energética. La regulación CREG 174-2021 im
 - **Administrador del Sistema de Intercambios Comerciales (ASIC):** Liquida las transacciones de energía entre agentes.
 - **Administrador de Cuentas de Liquidación (LAC):** Gestiona la cadena de pagos del mercado.
 
-
 ### El Sistema Interconectado Nacional (SIN)
 
 El SIN conecta la generación, transmisión, distribución y comercialización de electricidad en Colombia. La capacidad instalada (~18.8 GW) se distribuye así:
@@ -70,7 +65,6 @@ El SIN conecta la generación, transmisión, distribución y comercialización d
 | ☀️ **Solar** | ~3% energía, ~84% en número de recursos | Crecimiento explosivo en GD y autogeneración. Perfil de campana (pico 10am–3pm) |
 | 💨 **Eólica** | <1% (en expansión) | Proyectos en La Guajira, fase de construcción y puesta en marcha |
 | ⚙️ **Cogeneración** | ~3% | Industria azucarera (bagazo), sector industrial |
-
 
 ### Métricas clave del mercado
 
@@ -85,7 +79,7 @@ El SIN conecta la generación, transmisión, distribución y comercialización d
 
 ### API Pública de XM
 
-XM presenta una **API REST pública** la cual permite consultar diferentes fuentes de datos tanto operativos como comerciales del SIN. Dicho uso no requiere de autenticación (API key), pero tiene las siguientes restricciones:
+XM expone una **API REST pública** que permite consultar datos operativos y comerciales del SIN. No requiere autenticación (API key), pero tiene restricciones:
 
 - **Límite por consulta:** Máximo **31 días** por llamada para métricas horarias.
 - **Niveles de agregación (Entity):** `Sistema`, `Agente`, `Recurso`, `Rio`, `Embalse`, `Area`, `SubArea`, entre otros.
@@ -115,3 +109,269 @@ df = api.request_data(
 - Descarga directa de cualquier métrica por nivel de agregación.
 - Retorna `pandas.DataFrame` listo para análisis.
 - Sin autenticación, sin API keys, sin límite de llamadas diarias (pero sí de días por consulta).
+
+### Modos de operación del notebook
+
+El notebook soporta **3 modos** para flexibilidad total:
+
+| Modo | Descripción | Requiere API |
+|:-----|:------------|:-------------|
+| `API` | Descarga automáticamente los últimos 30 días (D-1) | ✅ |
+| `FIJO` | Descarga un rango de fechas específico (para estudios históricos: El Niño, racionamientos, etc.) | ✅ |
+| `CSV` | Carga datos previamente descargados desde `data/raw/` | ❌ |
+
+Esto permite que cualquier persona reproduzca el análisis sin acceso a internet, usando los CSVs incluidos en el repositorio.
+
+---
+
+## 🔧 Arquitectura del Pipeline ETL
+
+```
+                        ┌──────────────────────┐
+                        │   API XM (pydataxm)  │
+                        │  Métrica: Gene        │
+                        │  Nivel: Recurso       │
+                        └──────────┬───────────┘
+                                   │  Extract
+                                   ▼
+                        ┌──────────────────────┐
+                        │  datos_crudos (wide)  │
+                        │  24 cols por hora     │
+                        │  Values_Hour01...24   │
+                        └──────────┬───────────┘
+                                   │  Transform: melt()
+                                   ▼
+                        ┌──────────────────────┐
+                        │  fact_generacion      │
+                        │  (long format)        │
+                        │  Fecha|Hora|Codigo|   │
+                        │  Generacion_kWh       │
+                        └──────────┬───────────┘
+                                   │  JOIN
+                    ┌──────────────┼──────────────┐
+                    ▼              ▼               ▼
+            ┌─────────────┐ ┌──────────┐ ┌──────────────┐
+            │ dim_plantas  │ │dim_agentes│ │  dim_rios    │
+            │ Tecnologia   │ │ Nombre   │ │  Cuenca      │
+            │ Fuente       │ │ Tipo     │ │  Aportantes  │
+            │ RecType      │ │ Código   │ │              │
+            └─────────────┘ └──────────┘ └──────────────┘
+                    │
+                    ▼
+            ┌──────────────────────────────┐
+            │    generacion_enriquecida    │
+            │  Tabla analítica final       │
+            │  Fecha|Hora|Planta|Tecno|    │
+            │  Fuente|Agente|Generacion    │
+            └──────────────────────────────┘
+```
+
+### Modelo Dimensional (Star Schema)
+
+- **Tabla de hechos (`fact_generacion`):** Una fila por planta × hora × día. Columnas: `Fecha`, `Hora`, `Codigo_Planta`, `Generacion_kWh`.
+- **Dimensión plantas (`dim_plantas`):** Código, nombre, tecnología (`HIDRAULICA`, `SOLAR`, `TERMICA`, `EOLICA`, `COGENERADOR`), fuente de energía, tipo de recurso (`NORMAL`, `FILO DE AGUA`, `GEN. DISTRIBUIDA`, `AUTOG PEQ. ESCALA`), tipo de despacho, agente propietario.
+- **Dimensión agentes (`dim_agentes`):** Información de las empresas participantes del MEM.
+- **Dimensión ríos (`dim_rios`):** Cuencas hidrográficas asociadas a plantas hidráulicas.
+
+---
+
+## 📂 Estructura del Repositorio
+
+```
+xm-energia-colombia/
+│
+├── notebooks/
+│   └── 01_ETL_exploracion_v1.ipynb     # Pipeline ETL + EDA completo
+│
+├── data/
+│   ├── raw/                             # Datos crudos descargados de la API
+│   │   ├── datos_generacion_test.csv    # Generación real (Gene) - muestra
+│   │   ├── dim_plantas.csv              # Catálogo de recursos generadores
+│   │   ├── dim_agentes.csv              # Catálogo de agentes del mercado
+│   │   └── dim_rios.csv                 # Catálogo de cuencas hidrográficas
+│   │
+│   └── processed/                       # Outputs limpios del ETL
+│       ├── fact_generacion.csv          # Tabla de hechos (long format)
+│       ├── generacion_enriquecida.csv   # Tabla analítica con metadatos
+│       └── dim_plantas_clean.csv        # Dimensión limpia y normalizada
+│
+├── docs/
+│   └── Datos_API_XM.xlsx               # Catálogo completo de 190 métricas de XM
+│
+├── README.md                            # Este archivo
+├── requirements.txt                     # Dependencias del proyecto
+└── LICENSE                              # MIT License
+```
+
+---
+
+## ⚙️ Instalación y Configuración
+
+### Requisitos previos
+
+- Python 3.10+
+- pip
+
+### Instalación rápida
+
+```bash
+# 1. Clonar el repositorio
+git clone https://github.com/tu-usuario/xm-energia-colombia.git
+cd xm-energia-colombia
+
+# 2. Crear entorno virtual (recomendado)
+python -m venv venv
+source venv/bin/activate  # Linux/Mac
+# venv\Scripts\activate   # Windows
+
+# 3. Instalar dependencias
+pip install -r requirements.txt
+```
+
+### `requirements.txt`
+
+```
+pydataxm>=0.3.0
+pandas>=2.0
+matplotlib>=3.7
+seaborn>=0.12
+```
+
+### Ejecución sin API (modo CSV)
+
+Si no tienes acceso a internet o no deseas instalar `pydataxm`, el notebook detecta automáticamente si la librería está disponible y usa los CSVs incluidos en `data/raw/`:
+
+```python
+# El notebook maneja esto automáticamente:
+try:
+    from pydataxm import pydataxm
+    API_DISPONIBLE = True
+except ImportError:
+    API_DISPONIBLE = False
+    # → Usa los archivos CSV de data/raw/
+```
+
+---
+
+## 🚀 Uso
+
+### Opción 1: Modo interactivo (Jupyter)
+
+```bash
+jupyter notebook notebooks/01_ETL_exploracion_v1.ipynb
+```
+
+Selecciona el modo de operación en la celda de configuración:
+
+```python
+MODO = "API"   # Descarga últimos 30 días en vivo
+MODO = "FIJO"  # Rango de fechas personalizado (ej: evento El Niño)
+MODO = "CSV"   # Usa datos locales (sin internet)
+```
+
+### Opción 2: Reproducir con datos incluidos
+
+Sin modificar nada, el notebook carga los CSVs de muestra y ejecuta todo el pipeline ETL + EDA.
+
+### Outputs generados
+
+Después de ejecutar el notebook, encontrarás en `data/processed/`:
+
+| Archivo | Descripción | Filas aprox. |
+|:--------|:------------|:-------------|
+| `fact_generacion.csv` | Tabla de hechos (una fila por planta × hora × día) | ~50,000+ |
+| `generacion_enriquecida.csv` | Tabla analítica con metadatos de planta | ~50,000+ |
+| `dim_plantas_clean.csv` | Dimensión de plantas limpia | ~900+ |
+
+---
+
+## 📊 Análisis Exploratorio (EDA) — Hallazgos Clave
+
+### 4.1 Distribución por Tecnología
+
+La generación del SIN está dominada por **hidráulica** (~65%), seguida de **térmica** (~28%). Solar, a pesar de representar ~84% de los recursos registrados, contribuye menos del 3% de la energía total — reflejando que la mayoría son instalaciones de Generación Distribuida y autogeneración de pequeña escala.
+
+### 4.2 Perfil Horario Solar vs. Hidráulica
+
+La generación solar muestra una **curva de campana** con producción cero en horas nocturnas, rampa de subida desde las 6:00, pico entre las 10:00 y 14:00, y descenso hasta las 18:00. La **complementariedad solar-hidráulica** es evidente: la hidráulica mantiene generación estable las 24 horas, mientras la solar reduce la demanda sobre las plantas hidráulicas en horas de sol.
+
+### 4.3 Concentración del Mercado
+
+El análisis de los Top 15 agentes generadores revela alta concentración: pocos actores (EPM, EMGESA, ISAGEN) concentran la mayoría de la generación hidráulica, mientras que la generación solar está atomizada en cientos de pequeños autogeneradores.
+
+### 4.4 Desglose por Tipo de Recurso (RecType)
+
+El campo `RecType` es más granular que `Tecnologia` y revela la estructura real del parque generador:
+
+| RecType | Descripción | Regulación |
+|:--------|:------------|:-----------|
+| `AUTOG PEQ. ESCALA` | Autogeneradores < 1 MW | CREG 174-2021 |
+| `GEN. DISTRIBUIDA` | Conectada a redes de distribución | CREG 174-2021 |
+| `AUTOGENERADOR` | Grandes autogeneradores industriales > 1 MW | Res. CREG |
+| `NORMAL` | Plantas despachadas centralmente por XM | Despacho central |
+| `FILO DE AGUA` | PCH con aprovechamiento de caudal | Despacho central |
+
+---
+
+## 📡 Catálogo de Métricas XM
+
+La API de XM expone **190 registros** correspondientes a **139 métricas únicas**, disponibles en 13 niveles de agregación (`Sistema`, `Agente`, `Recurso`, `Rio`, `Embalse`, etc.). Las más relevantes para el roadmap del proyecto:
+
+| Categoría | MetricId | Unidad | Nivel | Uso en el proyecto |
+|:----------|:---------|:-------|:------|:-------------------|
+| **Generación** | `Gene` | kWh | Recurso | v1 ✅ — Tabla de hechos principal |
+| **Demanda** | `DemaReal` | kWh | Sistema | v2 — Balance generación vs. demanda |
+| **Precios** | `PrecBolsNaci` | COP/kWh | Sistema | v2 — Correlación precio-generación |
+| **Embalses** | `PorcVoluUtilDiar` | % | Sistema | v2 — Seguridad hídrica |
+| **Capacidad** | `CapEfecNeta` | kW | Recurso | v3 — Factor de planta real |
+| **Emisiones** | `EmisionesCO2Eq` | gCO₂e/kWh | Recurso | v3 — Análisis ESG |
+| **Emisiones sistema** | `factorEmisionCO2e` | gCO₂e/kWh | Sistema | v3 — Huella de carbono |
+| **Solar** | `IrrGlobal` | W/m² | Recurso | v3/v5 — Performance ratio |
+| **Despacho** | `GeneProgDesp` | kWh | Recurso | v5 — Desviaciones y predicción |
+
+> El catálogo completo está disponible en `docs/Datos_API_XM.xlsx`.
+
+---
+
+## 🗺️ Roadmap del Proyecto
+
+| Versión | Descripción | Estado |
+|:--------|:------------|:-------|
+| **v1** | ETL + EDA: pipeline reproducible, desglose por tecnología y RecType, perfil horario, concentración por agente | ✅ Completada |
+
+
+---
+
+## 🛠️ Stack Tecnológico
+
+| Componente | Tecnología |
+|:-----------|:-----------|
+| Lenguaje | Python 3.10+ |
+| Datos | `pydataxm`, API REST de XM |
+| Manipulación | Pandas, NumPy |
+| Visualización | Matplotlib, Seaborn |
+| Notebook | Jupyter |
+| Dashboard (v4) | Streamlit |
+| ML (v5) | Scikit-learn, XGBoost |
+| Despliegue (v4) | Streamlit Community Cloud |
+
+---
+
+## 👤 Autor
+
+**Manuel Fernando Fajardo Rodríguez**
+Senior Electrical Engineer · Power Systems · Data Science
+
+- 8+ años de experiencia en estudios de sistemas de potencia (DIgSILENT PowerFactory, PSS/E, PSCAD, EMTP).
+- 5 años ejecutando estudios de interconexión NERC/FERC para Duke Energy Florida.
+- Especialización en automatización Python para el sector eléctrico colombiano.
+- Maestría en Ingeniería Eléctrica — Universidad Nacional de Colombia.
+
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-0A66C2?logo=linkedin)](https://www.linkedin.com/in/tu-perfil/)
+[![GitHub](https://img.shields.io/badge/GitHub-Follow-181717?logo=github)](https://github.com/tu-usuario)
+
+---
+
+## 📄 Licencia
+
+Este proyecto está bajo la [Licencia MIT](LICENSE). Los datos provienen de la API pública de XM y su uso está sujeto a los términos de XM S.A. E.S.P.
