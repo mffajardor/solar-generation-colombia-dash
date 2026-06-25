@@ -316,7 +316,11 @@ La API de XM expone **190 registros** correspondientes a **139 métricas únicas
 | Versión | Descripción | Estado |
 |:--------|:------------|:-------|
 | **v1** | ETL + EDA: pipeline reproducible, desglose por tecnología y RecType, perfil horario, concentración por agente | ✅ Completada |
-
+| **v2** | Series 30+ días · Balance generación-demanda · Precio de bolsa · Nivel de embalses | `DemaReal`, `PrecBolsNaci`, `PorcVoluUtilDiar`, `AporEner` | ⏭️ Próxima |
+| **v2.5** | Caso de negocio: arbitraje de energía con SAEB, bajo la Resolución CREG 101 113 de 2026 (almacenamiento con baterías) | `PrecBolsNaci` (reutilizada de v2) | 🆕 Propuesta |
+| **v3** | Análisis ESG · Emisiones CO₂ · Capacidad instalada · Factor de planta | `EmisionesCO2Eq`, `CapEfecNeta`, `IrrGlobal`, `factorEmisionCO2e` | 📋 |
+| **v4** | Dashboard interactivo Streamlit | — | 📋 |
+| **v5** | Modelo predictivo: `GeneProgDesp` vs `Gene` → desviaciones → ML predicción solar | `GeneProgDesp`, `DesvEner` | 📋 |
 
 ---
 
