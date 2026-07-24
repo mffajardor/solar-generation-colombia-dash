@@ -18,3 +18,4 @@ __pycache__/
 
 # Libro de Google sheet
 data/Datos_API_XM.gsheet
+data/Datos_API_XM.xlsx
