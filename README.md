@@ -1,359 +1,487 @@
-# 🇨🇴 Análisis de Generación Eléctrica — Colombia (API XM)
+# 🇨🇴 Análisis del Sistema Eléctrico Colombiano — API XM
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Pandas](https://img.shields.io/badge/Pandas-2.x-150458?logo=pandas)](https://pandas.pydata.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/Status-v1%20ETL%20%2B%20EDA-blue)]()
+[![Status](https://img.shields.io/badge/Status-v2%20en%20validaci%C3%B3n-orange)]()
 
-> Pipeline ETL reproducible + análisis exploratorio del mercado eléctrico colombiano usando la API pública de XM.
+> Pipeline ETL reproducible y análisis del Sistema Interconectado Nacional (SIN)
+> a partir de la API pública de XM: generación, demanda, precio de bolsa,
+> embalses y aportes hídricos.
 
 ---
 
-## 📋 Tabla de Contenidos
+## 📋 Contenido
 
-- [Descripción del Proyecto](#-descripción-del-proyecto)
-- [Contexto: El Mercado Eléctrico Colombiano y XM](#-contexto-el-mercado-eléctrico-colombiano-y-xm)
-- [La API de XM y pydataxm](#-la-api-de-xm-y-pydataxm)
-- [Arquitectura del Pipeline ETL](#-arquitectura-del-pipeline-etl)
-- [Estructura del Repositorio](#-estructura-del-repositorio)
-- [Instalación y Uso](#-instalación-y-uso)
-			  
-- [Análisis Exploratorio — Hallazgos Clave](#-análisis-exploratorio--hallazgos-clave)
-- [Catálogo de Métricas XM](#-catálogo-de-métricas-xm)
-- [Roadmap del Proyecto](#-roadmap-del-proyecto)
-- [Stack Tecnológico](#-stack-tecnológico)
+- [Descripción](#-descripción)
+- [Versiones del proyecto](#-versiones-del-proyecto)
+- [Preguntas de análisis](#-preguntas-de-análisis)
+- [Fuentes y métricas XM](#-fuentes-y-métricas-xm)
+- [Arquitectura de datos](#-arquitectura-de-datos)
+- [Estructura del repositorio](#-estructura-del-repositorio)
+- [Instalación](#-instalación)
+- [Ejecución](#-ejecución)
+- [Outputs de la v2](#-outputs-de-la-v2)
+- [Análisis incluidos](#-análisis-incluidos)
+- [Calidad y reproducibilidad](#-calidad-y-reproducibilidad)
+- [Estado de validación](#-estado-de-validación)
+- [Roadmap](#-roadmap)
 - [Autor](#-autor)
-- [Licencia](#-licencia)
-
-
----
-
-## 🎯 Descripción del Proyecto
-
-Este proyecto construye un **pipeline ETL (Extract–Transform–Load) reproducible** que extrae datos de generación eléctrica en tiempo real desde la API pública de XM — el operador del mercado eléctrico de Colombia — los transforma en un **modelo dimensional limpio** (star schema), y entrega un análisis exploratorio del parque generador del Sistema Interconectado Nacional (SIN).
-
-### Preguntas que responde
-
-1. **¿Cómo se distribuye la generación por tecnología?** — Participación porcentual de Solar, Hidráulica, Térmica, Eólica y Cogeneración en la generación total del SIN.
-2. **¿Cuál es el perfil horario típico de generación solar en Colombia?** — Curva de campana H01–H24 y complementariedad con la generación hidráulica.
-3. **¿Qué tan concentrado está el mercado por agente generador?** — Top 15 agentes, participación por tecnología.
-4. **¿Cuál es la composición real del parque solar?** — Desglose por tipo de recurso: Autogeneración de Pequeña Escala, Generación Distribuida, Autogeneradores y plantas despachadas centralmente.
-
-### ¿Por qué es relevante?
-
-Colombia está en plena transición energética. La regulación CREG 174-2021 impulsó la autogeneración de pequeña escala, y el país pasó de ~30 recursos solares en 2020 a más de 800 en 2025, aunque la mayoría aporta individualmente poca energía. Este proyecto permite analizar cuantitativamente esa transformación usando datos oficiales.
+- [Licencia y fuentes oficiales](#-licencia-y-fuentes-oficiales)
 
 ---
 
-## 🏛️ Contexto: El Mercado Eléctrico Colombiano y XM
+## 🎯 Descripción
 
-### ¿Qué es XM?
+Este proyecto analiza información pública del mercado eléctrico colombiano
+administrada por **XM S.A. E.S.P.**, operador del SIN y administrador del Mercado
+de Energía Mayorista (MEM).
 
-**XM S.A. E.S.P.** es la empresa que opera el **Sistema Interconectado Nacional (SIN)** y administra el **Mercado de Energía Mayorista (MEM)** de Colombia. Sus funciones principales:
+El flujo:
 
-- **Centro Nacional de Despacho (CND):** Programa y coordina la operación del sistema eléctrico en tiempo real.
-- **Administrador del Sistema de Intercambios Comerciales (ASIC):** Liquida las transacciones de energía entre agentes.
-- **Administrador de Cuentas de Liquidación (LAC):** Gestiona la cadena de pagos del mercado.
+1. Extrae métricas desde la API de XM o carga snapshots CSV.
+2. Valida cobertura temporal, estructura, nulos, rangos y duplicados.
+3. Transforma las 24 columnas horarias de XM de formato ancho a largo.
+4. Enriquece la generación con catálogos de plantas y agentes.
+5. Construye tablas horarias y diarias del sistema.
+6. Genera análisis energéticos, económicos e hídricos.
+7. Exporta tablas y figuras reproducibles para análisis posteriores.
 
-### El Sistema Interconectado Nacional (SIN)
-
-El SIN conecta la generación, transmisión, distribución y comercialización de electricidad en Colombia. La capacidad instalada (~18.8 GW) se distribuye así:
-
-| Tecnología | Participación aprox. | Rol en el sistema |
-|:-----------|:---------------------|:------------------|
-| 🌊 **Hidráulica** | ~65% de la energía | Base del sistema. Sensible a El Niño (aportes hídricos) |
-| 🔥 **Térmica** | ~28% de la energía | Respaldo. Gas natural, carbón, fuel oil. Define precio de bolsa en horas pico |
-| ☀️ **Solar** | ~3% energía, ~84% en número de recursos | Crecimiento explosivo en GD y autogeneración. Perfil de campana (pico 10am–3pm) |
-| 💨 **Eólica** | <1% (en expansión) | Proyectos en La Guajira, fase de construcción y puesta en marcha |
-| ⚙️ **Cogeneración** | ~3% | Industria azucarera (bagazo), sector industrial |
-
-### Métricas clave del mercado
-
-- **`Gene` (Generación Real):** Energía producida por cada recurso, reportada en kWh por hora (H1–H24) por día.
-- **`DemaReal` (Demanda Real):** Consumo de usuarios regulados y no regulados del SIN.
-- **`PrecBolsNaci` (Precio de Bolsa Nacional):** Precio spot horario del mercado mayorista, en COP/kWh.
-- **`PorcVoluUtilDiar` (Nivel de Embalses):** Porcentaje de capacidad útil de los embalses, indicador clave de seguridad energética.
+El repositorio se desarrolla por versiones. La **v1** establece el ETL y EDA de
+generación; la **v2** amplía el modelo hacia una visión integrada de la operación
+del SIN.
 
 ---
 
-## 📡 La API de XM y `pydataxm`
+## 🧭 Versiones del proyecto
 
-### API Pública de XM
+### v1 — ETL y análisis exploratorio de generación
 
-XM expone una **API REST pública** que permite consultar datos operativos y comerciales del SIN. No requiere autenticación (API key), pero tiene restricciones:
+Incluye:
 
-- **Límite por consulta:** Máximo **31 días** por llamada para métricas horarias.
-- **Niveles de agregación (Entity):** `Sistema`, `Agente`, `Recurso`, `Rio`, `Embalse`, `Area`, `SubArea`, entre otros.
-- **Formato de respuesta:** JSON con estructura `{Id, Values_code, Values_Hour01...Values_Hour24, Date}`.
-- **Catálogo de métricas:** **190 métricas** (139 únicas) agrupadas en categorías como generación, demanda, precios, emisiones, aportes hídricos y capacidad instalada.
+- generación real por recurso;
+- transformación `wide → long`;
+- dimensión de plantas y agentes;
+- distribución por tecnología;
+- perfil horario solar e hidráulico;
+- concentración por agente;
+- clasificación por tipo de recurso.
 
-### La librería `pydataxm`
+### v2 — Series de tiempo y contexto operativo
 
-[`pydataxm`](https://github.com/EquipoAnwor662015/pydataxm) es un wrapper de Python que simplifica el acceso a la API de XM:
+Añade:
 
-```python
-from pydataxm import pydataxm
-import datetime as dt
+- demanda real horaria;
+- precio de bolsa nacional;
+- precio de escasez como referencia;
+- nivel diario de embalses;
+- aportes hídricos;
+- balance analítico generación–demanda;
+- asociaciones precio–embalses–participación térmica;
+- heatmaps horarios;
+- indicadores exploratorios para la futura v2.5 sobre SAEB.
 
-api = pydataxm.ReadDB()
+> **Estado:** la implementación candidata de v2 está desarrollada y ha sido
+> probada en modo CSV, con estructuras equivalentes a XM y mediante consultas
+> pequeñas a la API. Antes de declararla `v2.0.0` debe ejecutarse y revisarse con
+> las seis métricas oficiales para un período común completo.
 
-# Descargar generación real por recurso (últimos 7 días)
-df = api.request_data(
-    "Gene",                               # MetricId
-    "Recurso",                             # Entity level
-    dt.date(2025, 6, 1),                   # fecha_inicio
-    dt.date(2025, 6, 7)                    # fecha_fin (máx. 31 días)
-)
+---
+
+## ❓ Preguntas de análisis
+
+### Preguntas de v1
+
+1. ¿Cómo se distribuye la generación por tecnología?
+2. ¿Cuál es el perfil horario de la generación solar?
+3. ¿Qué agentes concentran la generación?
+4. ¿Cómo se compone el parque solar por tipo de recurso?
+
+### Preguntas de v2
+
+1. ¿Cómo evolucionan generación y demanda durante períodos de 30 días o más?
+2. ¿En qué horas aparece el menor gap entre generación reportada y demanda?
+3. ¿Cómo cambia el precio de bolsa dentro del día?
+4. ¿Qué asociación presentan precio, embalses y participación térmica?
+5. ¿Cómo evolucionan los aportes hídricos y el nivel de embalses?
+6. ¿Existe un spread horario que justifique estudiar almacenamiento con baterías?
+
+El gap `Gene - DemaReal` se utiliza como indicador analítico y de consistencia.
+No representa automáticamente exportaciones o déficit físico, pues puede recoger
+pérdidas, intercambios, diferencias de cobertura y convenciones de liquidación.
+
+---
+
+## 📡 Fuentes y métricas XM
+
+| Categoría | MetricId | Entidad | Frecuencia | Unidad del catálogo | Versión |
+|:--|:--|:--|:--|:--|:--|
+| Generación real | `Gene` | Recurso | Horaria | kWh | v1/v2 |
+| Demanda real | `DemaReal` | Sistema | Horaria | kWh | v2 |
+| Precio de bolsa | `PrecBolsNaci` | Sistema | Horaria | COP/kWh | v2 |
+| Volumen útil | `PorcVoluUtilDiar` | Sistema | Diaria | % | v2 |
+| Aportes hídricos | `AporEner` | Sistema | Diaria | kWh | v2 |
+| Precio de escasez | `PrecEsca` | Sistema | Diaria | COP/kWh | v2 |
+
+La API limita las consultas de estas métricas a ventanas de hasta 31 días. La v2
+divide automáticamente períodos mayores en bloques y aplica reintentos.
+
+Aunque el catálogo expresa `PorcVoluUtilDiar` en porcentaje, el endpoint diario
+puede entregar una fracción entre 0 y 1. El ETL detecta ese caso y normaliza, por
+ejemplo, `0.7045 → 70.45%`.
+
+---
+
+## 🔧 Arquitectura de datos
+
+```text
+API XM / CSV
+     │
+     ▼
+datos_crudos (formato ancho: Values_Hour01 ... Values_Hour24)
+     │
+     ├── validación de cobertura, estructura y calidad
+     │
+     ▼
+tablas de hechos en formato largo
+     │
+     ├── fact_generacion
+     ├── fact_demanda
+     ├── fact_precio
+     ├── fact_embalses
+     ├── fact_aportes
+     └── fact_precio_escasez
+     │
+     ├── merge con dim_plantas
+     ▼
+gen_enriquecida
+     │
+     ├── agregación horaria
+     ▼
+sistema_h
+     │
+     ├── agregación diaria
+     ▼
+resumen_diario ──► gráficos, hallazgos y preparación de v2.5
 ```
 
-**Características clave:**
-- Descarga directa de cualquier métrica por nivel de agregación.
-- Retorna `pandas.DataFrame` listo para análisis.
-- Sin autenticación, sin API keys, sin límite de llamadas diarias (pero sí de días por consulta).
+### Grano de las tablas
 
-### Modos de operación del notebook
+| Tabla | Una fila representa |
+|:--|:--|
+| `fact_generacion` | Recurso × fecha × hora XM |
+| `fact_demanda` | Sistema × fecha × hora XM |
+| `fact_precio` | Sistema × fecha × hora XM |
+| `fact_embalses` | Sistema × fecha |
+| `fact_aportes` | Sistema × fecha |
+| `sistema_h` | Una hora consolidada del SIN |
+| `resumen_diario` | Un día consolidado del SIN |
 
-El notebook soporta **3 modos** para flexibilidad total:
-
-| Modo | Descripción | Requiere API |
-|:-----|:------------|:-------------|
-| `API` | Descarga automáticamente los últimos 30 días (D-1) | ✅ |
-| `FIJO` | Descarga un rango de fechas específico (para estudios históricos: El Niño, racionamientos, etc.) | ✅ |
-| `CSV` | Carga datos previamente descargados desde `data/raw/` | ❌ |
-
-Esto permite que cualquier persona reproduzca el análisis sin acceso a internet, usando los CSVs incluidos en el repositorio.
-
----
-## 🔧 Arquitectura del Pipeline ETL
-
-```
-┌────────────────────┐      melt()       ┌───────────────────┐      merge()      ┌─────────────────────────┐
-│  datos_crudos       │  ──────────────►  │  fact_generacion  │  ──────────────►  │  generacion_enriquecida │
-│  (wide: 24 cols/h)  │                   │  (long: 1 fila/h) │                   │  (+ metadatos planta)   │
-└────────────────────┘                    └───────────────────┘                   └─────────────────────────┘
-                                                                       ▲
-                                                              ┌────────┴────────┐
-                                                              │   dim_plantas   │
-                                                              │   dim_agentes   │
-                                                              │   dim_rios      │
-                                                              └─────────────────┘
-```
-
-### Modelo Dimensional (Star Schema)
-
-- **Tabla de hechos (`fact_generacion`):** Una fila por planta × hora × día. Columnas: `Fecha`, `Hora`, `Codigo_Planta`, `Generacion_kWh`.
-- **Dimensión plantas (`dim_plantas`):** Código, nombre, tecnología, fuente de energía, tipo de recurso (RecType), tipo de despacho, agente propietario.
-- **Dimensión agentes (`dim_agentes`):** Empresas participantes del MEM.
-- **Dimensión ríos (`dim_rios`):** Cuencas hidrográficas asociadas a plantas hidráulicas.
-
-### Auto-refresh de Catálogos
-
-El parque generador crece constantemente. Si el ETL detecta plantas en los datos de generación que no existen en el catálogo maestro, automáticamente descarga catálogos frescos desde la API, re-ejecuta el JOIN, y reporta las plantas que aún no tienen match.
+En la convención de XM, `H01` representa el intervalo 00:00–01:00.
 
 ---
 
-## 📂 Estructura del Repositorio
+## 📂 Estructura del repositorio
 
-```
-solar-generation-colombia/
+```text
+solar-generation-colombia-dash/
 │
 ├── notebooks/
-│   └── 01_ETL_exploracion_v1.ipynb       # Pipeline ETL + EDA completo
+│   ├── 01_ETL_exploracion_v1.ipynb
+│   └── 02_serie_tiempo_balance_v2.ipynb
+│
+├── docs/
+│   └── GUIA_ESTUDIO_V2.md
 │
 ├── src/
-│   ├── extraccion.py                      # Funciones de descarga desde la API XM
-│   ├── etl.py                             # Pipeline de transformación (wide → long)
-│   └── visualizaciones.py                 # Funciones de gráficos reutilizables
+│   ├── extraccion.py
+│   ├── etl.py
+│   └── visualizaciones.py
 │
 ├── data/
-│   ├── raw/                               # Datos crudos con estampa YYYYMMDD
-│   │   ├── datos_generacion_YYYYMMDD.csv  # Generación real (Gene) por recurso
-│   │   ├── dim_plantas_YYYYMMDD.csv       # Catálogo de recursos generadores
-│   │   ├── dim_agentes_YYYYMMDD.csv       # Catálogo de agentes del mercado
-│   │   └── dim_rios_YYYYMMDD.csv          # Catálogo de cuencas hidrográficas
-│   └── processed/                         # Outputs limpios del ETL
-│       ├── fact_generacion_YYYYMMDD.csv
-│       ├── generacion_enriquecida_YYYYMMDD.csv
-│       └── dim_plantas_clean_YYYYMMDD.csv
+│   ├── raw/                 # No versionar: snapshots descargados
+│   └── processed/           # No versionar: tablas y figuras regenerables
 │
-├── app/                                    # Dashboard Streamlit (v4 — futuro)
-│
+├── app/                     # Dashboard Streamlit planificado para v4
+├── 00_Prev/                 # Borradores y propuestas; no publicar completo
+├── requirements.txt
 ├── .gitignore
-├── README.md
-└── requirements.txt
+└── README.md
 ```
+
+`00_Prev/` funciona como espacio de revisión. Solo las versiones aprobadas deben
+promoverse a `notebooks/`, `docs/` o a los archivos raíz.
 
 ---
 
-## ⚙️ Instalación y Configuración
+## ⚙️ Instalación
 
-### Requisitos previos
+### Requisitos
 
-- Python 3.10+
-- pip
+- Python 3.10 o superior.
+- `pip`.
+- Jupyter Notebook, JupyterLab o VS Code con soporte para notebooks.
 
-### Instalación rápida
+### Preparación
 
 ```bash
-# 1. Clonar el repositorio
-git clone https://github.com/tu-usuario/xm-energia-colombia.git
-cd xm-energia-colombia
+git clone https://github.com/mffajardor/solar-generation-colombia-dash.git
+cd solar-generation-colombia-dash
 
-# 2. Crear entorno virtual (recomendado)
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# venv\Scripts\activate   # Windows
+python -m venv .venv
+```
 
-# 3. Instalar dependencias
+Activación:
+
+```bash
+# Windows PowerShell
+.\.venv\Scripts\Activate.ps1
+
+# Linux/macOS
+source .venv/bin/activate
+```
+
+Instalación:
+
+```bash
+python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### `requirements.txt`
+Dependencias propuestas para v2:
 
-```
-pydataxm>=0.3.0
+```text
+pydataxm>=0.3.18
 pandas>=2.0
+numpy>=1.24
+requests>=2.31
 matplotlib>=3.7
 seaborn>=0.12
 ```
 
-### Ejecución sin API (modo CSV)
-
-Si no tienes acceso a internet o no deseas instalar `pydataxm`, el notebook detecta automáticamente si la librería está disponible y usa los CSVs incluidos en `data/raw/`:
-
-```python
-# El notebook maneja esto automáticamente:
-try:
-    from pydataxm import pydataxm
-    API_DISPONIBLE = True
-except ImportError:
-    API_DISPONIBLE = False
-    # → Usa los archivos CSV de data/raw/
-```
+La v2 usa el catálogo de `pydataxm` y realiza la descarga mediante los endpoints
+REST de XM con `requests`, lo que evita incompatibilidades del método asíncrono de
+algunas versiones de `pydataxm` en Python 3.14.
 
 ---
 
-## 🚀 Uso
+## 🚀 Ejecución
 
-### Opción 1: Modo interactivo (Jupyter)
+### 1. Ejecutar la v1
 
 ```bash
 jupyter notebook notebooks/01_ETL_exploracion_v1.ipynb
 ```
 
-Selecciona el modo de operación en la celda de configuración:
+La v1 prepara la generación y los catálogos maestros.
 
-```python
-MODO = "API"   # Descarga últimos 30 días en vivo
-MODO = "FIJO"  # Rango de fechas personalizado (ej: evento El Niño)
-MODO = "CSV"   # Usa datos locales (sin internet)
+### 2. Ejecutar la v2
+
+```bash
+jupyter notebook notebooks/02_serie_tiempo_balance_v2.ipynb
 ```
 
-### Opción 2: Reproducir con datos incluidos
+Seleccionar un modo en la celda de configuración:
 
-Sin modificar nada, el notebook carga los CSVs de muestra y ejecuta todo el pipeline ETL + EDA.
+```python
+MODO = "API"   # Últimos N días cerrados hasta D-1
+MODO = "FIJO"  # Período histórico definido por el usuario
+MODO = "CSV"   # Snapshots existentes; no requiere conexión
+```
 
-### Outputs generados
+#### Modo API
 
-Después de ejecutar el notebook, encontrarás en `data/processed/`:
+Descarga las métricas necesarias y guarda snapshots en `data/raw/`.
 
-| Archivo | Descripción | Filas aprox. |
-|:--------|:------------|:-------------|
-| `fact_generacion.csv` | Tabla de hechos (una fila por planta × hora × día) | ~50,000+ |
-| `generacion_enriquecida.csv` | Tabla analítica con metadatos de planta | ~50,000+ |
-| `dim_plantas_clean.csv` | Dimensión de plantas limpia | ~900+ |
+#### Modo FIJO
 
----
+Permite reproducir un período concreto:
 
-## 📊 Análisis Exploratorio (EDA) — Hallazgos Clave
+```python
+FECHA_INICIO_FIJO = dt.date(2026, 5, 1)
+FECHA_FIN_FIJO = dt.date(2026, 5, 31)
+```
 
+#### Modo CSV
 
-### Distribución por Tecnología
-La generación del SIN está dominada por **hidráulica** (~65%), seguida de **térmica** (~28%). Solar representa la mayoría de los recursos registrados pero contribuye menos del 3% de la energía total, reflejando que la mayoría son instalaciones de Generación Distribuida y autogeneración de pequeña escala.
-
-### Perfil Horario Solar–Hidráulica
-La generación solar muestra una **curva de campana** con pico entre las 10h–14h. La **complementariedad** con la hidráulica es evidente: la solar reduce la demanda sobre el sistema en horas de sol, mientras la hidráulica cubre los picos nocturnos (18h–22h).
-
-### Concentración del Mercado
-El análisis de los Top 15 agentes revela alta concentración: pocos actores (EPM, EMGESA, ISAGEN) concentran la mayoría de la generación hidráulica, mientras la solar está atomizada en cientos de pequeños autogeneradores.
-
-### Desglose por RecType (CREG)
-El campo `Tipo_Recurso` revela que la mayoría de los recursos solares son `AUTOG PEQ. ESCALA` y `GEN. DISTRIBUIDA` bajo CREG 174-2021, con un marco regulatorio distinto al despacho central.
-				
-
-| RecType | Descripción | Regulación |
-|:--------|:------------|:-----------|
-| `AUTOG PEQ. ESCALA` | Autogeneradores < 1 MW | CREG 174-2021 |
-| `GEN. DISTRIBUIDA` | Conectada a redes de distribución | CREG 174-2021 |
-| `AUTOGENERADOR` | Grandes autogeneradores industriales > 1 MW | Res. CREG |
-| `NORMAL` | Plantas despachadas centralmente por XM | Despacho central |
-| `FILO DE AGUA` | PCH con aprovechamiento de caudal | Despacho central |
+Carga el archivo más reciente de cada prefijo. El período analítico corresponde
+a la **intersección de fechas** disponible entre las métricas, no a su unión.
 
 ---
 
-## 📡 Catálogo de Métricas XM
+## 📦 Outputs de la v2
 
-La API de XM expone **190 registros** correspondientes a **139 métricas únicas**, disponibles en 13 niveles de agregación (`Sistema`, `Agente`, `Recurso`, `Rio`, `Embalse`, etc.). Las más relevantes para el roadmap del proyecto:
+Las tablas se escriben en `data/processed/` con una etiqueta de período:
 
-| Categoría | MetricId | Unidad | Nivel | Uso en el proyecto |
-|:----------|:---------|:-------|:------|:-------------------|
-| **Generación** | `Gene` | kWh | Recurso | v1 ✅ — Tabla de hechos principal |
-| **Demanda** | `DemaReal` | kWh | Sistema | v2 — Balance generación vs. demanda |
-| **Precios** | `PrecBolsNaci` | COP/kWh | Sistema | v2 — Correlación precio-generación |
-| **Embalses** | `PorcVoluUtilDiar` | % | Sistema | v2 — Seguridad hídrica |
-| **Capacidad** | `CapEfecNeta` | kW | Recurso | v3 — Factor de planta real |
-| **Emisiones** | `EmisionesCO2Eq` | gCO₂e/kWh | Recurso | v3 — Análisis ESG |
-| **Emisiones sistema** | `factorEmisionCO2e` | gCO₂e/kWh | Sistema | v3 — Huella de carbono |
-| **Solar** | `IrrGlobal` | W/m² | Recurso | v3/v5 — Performance ratio |
-| **Despacho** | `GeneProgDesp` | kWh | Recurso | v5 — Desviaciones y predicción |
+```text
+{tabla}_{YYYYMMDD}_{YYYYMMDD}.csv
+```
 
-> El catálogo completo está disponible en `docs/Datos_API_XM.xlsx`.
+| Output | Contenido |
+|:--|:--|
+| `fact_generacion_*` | Generación horaria por recurso |
+| `fact_demanda_*` | Demanda horaria del sistema |
+| `fact_precio_*` | Precio de bolsa horario |
+| `fact_embalses_*` | Nivel diario de embalses normalizado a % |
+| `fact_aportes_*` | Aportes hídricos diarios |
+| `fact_precio_escasez_*` | Referencia diaria de precio de escasez |
+| `gen_enriquecida_*` | Generación con metadatos de planta |
+| `sistema_h_*` | Vista horaria consolidada |
+| `resumen_diario_*` | Vista diaria consolidada |
+| `hallazgos_v2_*` | Indicadores calculados para el período |
 
----
-
-## 🗺️ Roadmap del Proyecto
-
-| Versión | Descripción | Estado |
-|:--------|:------------|:-------|
-| **v1** | ETL + EDA: pipeline reproducible, desglose por tecnología y RecType, perfil horario, concentración por agente | ✅ Completada |
-| **v2** | Series 30+ días · Balance generación-demanda · Precio de bolsa · Nivel de embalses | `DemaReal`, `PrecBolsNaci`, `PorcVoluUtilDiar`, `AporEner` | ⏭️ Próxima |
-| **v2.5** | Caso de negocio: arbitraje de energía con SAEB, bajo la Resolución CREG 101 113 de 2026 (almacenamiento con baterías) | `PrecBolsNaci` (reutilizada de v2) | 🆕 Propuesta |
-| **v3** | Análisis ESG · Emisiones CO₂ · Capacidad instalada · Factor de planta | `EmisionesCO2Eq`, `CapEfecNeta`, `IrrGlobal`, `factorEmisionCO2e` | 📋 |
-| **v4** | Dashboard interactivo Streamlit | — | 📋 |
-| **v5** | Modelo predictivo: `GeneProgDesp` vs `Gene` → desviaciones → ML predicción solar | `GeneProgDesp`, `DesvEner` | 📋 |
+Las figuras se guardan en `data/processed/figuras_v2/`.
 
 ---
 
-## 🛠️ Stack Tecnológico
+## 📊 Análisis incluidos
+
+### v1
+
+- participación por tecnología;
+- perfil horario solar–hidráulico;
+- principales agentes generadores;
+- composición por tipo de recurso;
+- evolución diaria de generación.
+
+### v2
+
+1. Balance diario generación–demanda.
+2. Perfil horario del gap.
+3. Serie de precio con rango mínimo–máximo.
+4. Asociación precio–embalses.
+5. Asociación precio–participación térmica.
+6. Perfil horario de precios y spread pico–valle.
+7. Nivel de embalses con bandas analíticas configurables.
+8. Aportes hídricos y cambio diario de embalses.
+9. Heatmap tecnología × hora.
+10. Heatmap precio día × hora.
+11. Perfil solar laborable vs. fin de semana.
+12. Resumen cuantitativo generado desde los datos ejecutados.
+
+Las correlaciones son exploratorias y no demuestran causalidad. Las bandas de
+embalses usadas en los gráficos tampoco equivalen a alertas regulatorias.
+
+---
+
+## ✅ Calidad y reproducibilidad
+
+La v2 incorpora:
+
+- descarga por bloques de máximo 31 días;
+- tres reintentos ante fallos de red;
+- selección de archivos por patrón, sin nombres hardcodeados;
+- período común entre métricas;
+- validación de fechas solicitadas y obtenidas;
+- reporte de nulos horarios;
+- validación de valores negativos y embalses fuera de 0–100%;
+- detección de duplicados en el grano;
+- deduplicación de `dim_plantas` antes del merge;
+- `left join` para conservar recursos sin catálogo;
+- rutas relativas a la raíz del repositorio;
+- outputs y figuras con etiqueta del período;
+- ejecución degradada controlada cuando faltan métricas en modo CSV.
+
+Los valores nulos de generación se reportan y conservan para no eliminar
+silenciosamente combinaciones recurso×fecha×hora.
+
+---
+
+## 🧪 Estado de validación
+
+La propuesta v2 ha superado:
+
+- compilación de todas las celdas;
+- ejecución offline con los CSV de generación disponibles;
+- ejecución integral con datos de prueba que reproducen los esquemas de XM;
+- validación de los esquemas reales de las cinco métricas nuevas;
+- consultas REST pequeñas de `DemaReal` y `PorcVoluUtilDiar`;
+- validación de la conversión de embalses de fracción a porcentaje;
+- generación de tablas, figuras y hallazgos dinámicos.
+
+Pendiente antes de publicar `v2.0.0`:
+
+1. Ejecutar las seis métricas oficiales para el mismo período completo.
+2. Revisar días faltantes y valores atípicos.
+3. Verificar visualmente todas las figuras.
+4. Reemplazar cualquier resultado de prueba por resultados oficiales.
+5. Aprobar el notebook, la guía y las dependencias que se promoverán desde
+   `00_Prev/`.
+
+Por esa razón, este README no publica todavía cifras finales de balance,
+correlación o spread SAEB.
+
+---
+
+## 🗺️ Roadmap
+
+| Versión | Alcance | Estado |
+|:--|:--|:--|
+| **v1** | ETL + EDA de generación y catálogos | ✅ Completada |
+| **v2** | Series, demanda, precio e hidrología | 🧪 Candidata en validación |
+| **v2.5** | Simulación y caso de negocio SAEB | 📐 Diseñada |
+| **v3** | Capacidad, factor de planta y emisiones | 📋 Planeada |
+| **v4** | Dashboard interactivo Streamlit | 📋 Planeada |
+| **v5** | Desviaciones y modelos predictivos | 📋 Planeada |
+
+### Preparación para v2.5
+
+La v2 calcula:
+
+```text
+spread_bruto = precio_pico - precio_valle
+spread_ajustado = precio_pico - precio_valle / eficiencia_round_trip
+```
+
+Estos indicadores solo justifican continuar el estudio. La viabilidad de un SAEB
+requiere modelar estado de carga, potencia, energía, eficiencia, degradación,
+CAPEX, OPEX, conexión, liquidación y reglas de participación.
+
+La referencia regulatoria utilizada es la **Resolución CREG 101 113 de 2026**,
+que define reglas para la instalación, operación y aspectos comerciales de los
+SAEB en el SIN.
+
+---
+
+## 🛠️ Stack tecnológico
 
 | Componente | Tecnología |
-|:-----------|:-----------|
+|:--|:--|
 | Lenguaje | Python 3.10+ |
-| Datos | `pydataxm`, API REST de XM |
-| Manipulación | Pandas, NumPy |
+| Datos | API REST de XM, `pydataxm`, `requests` |
+| Transformación | Pandas, NumPy |
 | Visualización | Matplotlib, Seaborn |
-| Notebook | Jupyter |
-| Dashboard (v4) | Streamlit |
-| ML (v5) | Scikit-learn, XGBoost |
-| Despliegue (v4) | Streamlit Community Cloud |
+| Desarrollo | Jupyter Notebook / VS Code |
+| Dashboard futuro | Streamlit |
+| Modelos futuros | Scikit-learn, XGBoost |
 
 ---
 
 ## 👤 Autor
 
-**Manuel Fernando Fajardo Rodríguez**
+**Manuel Fernando Fajardo Rodríguez**  
 Senior Electrical Engineer · Power Systems · Data Science
 
-- 8+ años de experiencia en estudios de sistemas de potencia (DIgSILENT PowerFactory, PSS/E, PSCAD, EMTP).
-- 5 años ejecutando estudios de interconexión NERC/FERC para Duke Energy Florida.
-- Automatización mediante Python para el sector eléctrico colombiano (CREG/CNO).
+- Experiencia en estudios de sistemas de potencia.
+- Automatización y análisis de datos para el sector eléctrico.
 - Maestría en Ingeniería Eléctrica — Universidad Nacional de Colombia.
 
-[![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-0A66C2?logo=linkedin)](www.linkedin.com/in/manuel-fajardo-bba988142)
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-0A66C2?logo=linkedin)](https://www.linkedin.com/in/manuel-fajardo-bba988142)
 [![GitHub](https://img.shields.io/badge/GitHub-Follow-181717?logo=github)](https://github.com/mffajardor/)
 
 ---
 
-## 📄 Licencia
+## 📄 Licencia y fuentes oficiales
 
-Este proyecto está bajo la [Licencia MIT](LICENSE). Los datos provienen de la API pública de XM y su uso está sujeto a los términos de XM S.A. E.S.P.
+Este proyecto está bajo la [Licencia MIT](LICENSE).
+
+Los datos provienen de fuentes públicas de XM y deben interpretarse según sus
+definiciones y condiciones vigentes:
+
+- [XM — servicios de información](https://www.xm.com.co/servicios-de-informacion)
+- [XM — precio de bolsa y precio de escasez](https://www.xm.com.co/transacciones/cargo-por-confiabilidad/precio-de-bolsa-y-escasez)
+- [CREG — Resolución 101 113 de 2026](https://gestornormativo.creg.gov.co/gestor/entorno/docs/resolucion_creg_101-113_2026.htm)
+
+Este repositorio tiene fines educativos y analíticos. No constituye una
+recomendación de inversión ni reemplaza información operativa o regulatoria
+oficial.
