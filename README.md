@@ -3,7 +3,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Pandas](https://img.shields.io/badge/Pandas-2.x-150458?logo=pandas)](https://pandas.pydata.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/Status-v2%20en%20validaci%C3%B3n-orange)]()
+[![Status](https://img.shields.io/badge/Status-v2%20definitiva%20en%20revisi%C3%B3n-2E7D32)]()
 
 > Pipeline ETL reproducible y análisis del Sistema Interconectado Nacional (SIN)
 > a partir de la API pública de XM: generación, demanda, precio de bolsa,
@@ -44,8 +44,9 @@ El flujo:
 3. Transforma las 24 columnas horarias de XM de formato ancho a largo.
 4. Enriquece la generación con catálogos de plantas y agentes.
 5. Construye tablas horarias y diarias del sistema.
-6. Genera análisis energéticos, económicos e hídricos.
-7. Exporta tablas y figuras reproducibles para análisis posteriores.
+6. Complementa cada planta con áreas operativas SIMEM y geografía UPME/XM.
+7. Genera análisis energéticos, económicos, hídricos y territoriales.
+8. Exporta tablas y figuras reproducibles para análisis posteriores.
 
 El repositorio se desarrolla por versiones. La **v1** establece el ETL y EDA de
 generación; la **v2** amplía el modelo hacia una visión integrada de la operación
@@ -78,13 +79,20 @@ Añade:
 - aportes hídricos;
 - balance analítico generación–demanda;
 - asociaciones precio–embalses–participación térmica;
-- heatmaps horarios;
+- figuras unificadas y separadas para facilitar su lectura;
+- heatmaps y perfiles horarios alternativos;
+- áreas y subáreas operativas obtenidas de SIMEM;
+- departamento, municipio y coordenadas obtenidos de la capa UPME/XM;
+- comparación auditable de cobertura entre SIMEM y UPME;
+- exploradores interactivos operativo y geográfico;
+- perfil solar y demanda para días laborables y fines de semana;
 - indicadores exploratorios para la futura v2.5 sobre SAEB.
 
-> **Estado:** la implementación candidata de v2 está desarrollada y ha sido
-> probada en modo CSV, con estructuras equivalentes a XM y mediante consultas
-> pequeñas a la API. Antes de declararla `v2.0.0` debe ejecutarse y revisarse con
-> las seis métricas oficiales para un período común completo.
+> **Estado:** la implementación definitiva candidata de v2 fue validada con las
+> seis métricas del período 2026-05-10 a 2026-06-07. La unión de los catálogos
+> SIMEM y UPME identifica las 506 plantas presentes en la generación del período,
+> sin eliminar registros sin correspondencia individual. Falta únicamente la
+> revisión final del autor antes de etiquetarla como `v2.0.0`.
 
 ---
 
@@ -99,7 +107,7 @@ Añade:
 
 ### Preguntas de v2
 
-1. ¿Cómo evolucionan generación y demanda durante períodos de 30 días o más?
+1. ¿Cómo evolucionan generación y demanda durante el período analizado?
 2. ¿En qué horas aparece el menor gap entre generación reportada y demanda?
 3. ¿Cómo cambia el precio de bolsa dentro del día?
 4. ¿Qué asociación presentan precio, embalses y participación térmica?
@@ -196,11 +204,14 @@ solar-generation-colombia-dash/
 ├── src/
 │   ├── extraccion.py
 │   ├── etl.py
-│   └── visualizaciones.py
+│   ├── visualizaciones.py
+│   ├── actualizar_areas_operativas_simem.py
+│   └── actualizar_catalogo_plantas.py
 │
 ├── data/
 │   ├── raw/                 # No versionar: snapshots descargados
-│   └── processed/           # No versionar: tablas y figuras regenerables
+│   ├── processed/           # No versionar: tablas y figuras regenerables
+│   └── reference/           # Dimensiones pequeñas y reproducibles
 │
 ├── app/                     # Dashboard Streamlit planificado para v4
 ├── 00_Prev/                 # Borradores y propuestas; no publicar completo
@@ -257,6 +268,7 @@ numpy>=1.24
 requests>=2.31
 matplotlib>=3.7
 seaborn>=0.12
+ipywidgets>=8.0
 ```
 
 La v2 usa el catálogo de `pydataxm` y realiza la descarga mediante los endpoints
@@ -329,6 +341,11 @@ Las tablas se escriben en `data/processed/` con una etiqueta de período:
 | `sistema_h_*` | Vista horaria consolidada |
 | `resumen_diario_*` | Vista diaria consolidada |
 | `hallazgos_v2_*` | Indicadores calculados para el período |
+| `dim_plantas_areas_operativas.csv` | Planta → área/subárea operativa SIMEM |
+| `dim_plantas_geografia_upme.csv` | Planta → departamento/municipio/coordenadas |
+| `dim_plantas_operativa_geografica.csv` | Catálogo combinado sin mezclar conceptos |
+| `qc_cobertura_fuentes_*` | Comparación de cobertura SIMEM, UPME y unión |
+| `qc_detalle_cobertura_fuentes_*` | Trazabilidad por Código SIC |
 
 Las figuras se guardan en `data/processed/figuras_v2/`.
 
@@ -357,7 +374,11 @@ Las figuras se guardan en `data/processed/figuras_v2/`.
 9. Heatmap tecnología × hora.
 10. Heatmap precio día × hora.
 11. Perfil solar laborable vs. fin de semana.
-12. Resumen cuantitativo generado desde los datos ejecutados.
+12. Perfil comparado de generación solar y demanda por tipo de día.
+13. Generación por área y subárea operativa SIMEM.
+14. Comparación de cobertura SIMEM–UPME.
+15. Generación por región, departamento o municipio.
+16. Resumen cuantitativo generado desde los datos ejecutados.
 
 Las correlaciones son exploratorias y no demuestran causalidad. Las bandas de
 embalses usadas en los gráficos tampoco equivalen a alertas regulatorias.
@@ -378,6 +399,11 @@ La v2 incorpora:
 - detección de duplicados en el grano;
 - deduplicación de `dim_plantas` antes del merge;
 - `left join` para conservar recursos sin catálogo;
+- validación de unicidad del Código SIC en cada fuente;
+- separación explícita entre región geográfica y área operativa;
+- paginación de la capa REST UPME;
+- caché auditable y reutilizable para SIMEM y UPME;
+- cobertura calculada por número de plantas y por energía;
 - rutas relativas a la raíz del repositorio;
 - outputs y figuras con etiqueta del período;
 - ejecución degradada controlada cuando faltan métricas en modo CSV.
@@ -389,27 +415,22 @@ silenciosamente combinaciones recurso×fecha×hora.
 
 ## 🧪 Estado de validación
 
-La propuesta v2 ha superado:
+La versión definitiva candidata de v2 ha superado:
 
 - compilación de todas las celdas;
 - ejecución offline con los CSV de generación disponibles;
 - ejecución integral con datos de prueba que reproducen los esquemas de XM;
 - validación de los esquemas reales de las cinco métricas nuevas;
-- consultas REST pequeñas de `DemaReal` y `PorcVoluUtilDiar`;
+- consultas REST de las métricas XM y de la capa geográfica UPME/XM;
 - validación de la conversión de embalses de fracción a porcentaje;
-- generación de tablas, figuras y hallazgos dinámicos.
+- generación de tablas, figuras y hallazgos dinámicos;
+- cruce exacto de 404/506 plantas con SIMEM;
+- cruce exacto de 500/506 plantas con UPME;
+- cobertura conjunta de 506/506 plantas;
+- conservación del 100 % de los registros de generación analizados.
 
-Pendiente antes de publicar `v2.0.0`:
-
-1. Ejecutar las seis métricas oficiales para el mismo período completo.
-2. Revisar días faltantes y valores atípicos.
-3. Verificar visualmente todas las figuras.
-4. Reemplazar cualquier resultado de prueba por resultados oficiales.
-5. Aprobar el notebook, la guía y las dependencias que se promoverán desde
-   `00_Prev/`.
-
-Por esa razón, este README no publica todavía cifras finales de balance,
-correlación o spread SAEB.
+Antes de publicar `v2.0.0`, el autor debe revisar visualmente el notebook
+principal y aprobar la secuencia de commits propuesta en `00_Prev/`.
 
 ---
 
@@ -418,7 +439,7 @@ correlación o spread SAEB.
 | Versión | Alcance | Estado |
 |:--|:--|:--|
 | **v1** | ETL + EDA de generación y catálogos | ✅ Completada |
-| **v2** | Series, demanda, precio e hidrología | 🧪 Candidata en validación |
+| **v2** | Series, contexto operativo y cobertura territorial | 🔎 Definitiva en revisión |
 | **v2.5** | Simulación y caso de negocio SAEB | 📐 Diseñada |
 | **v3** | Capacidad, factor de planta y emisiones | 📋 Planeada |
 | **v4** | Dashboard interactivo Streamlit | 📋 Planeada |
